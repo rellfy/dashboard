@@ -1,12 +1,5 @@
-[package]
-name = "dashboard"
-version = "0.0.0"
-authors = ["Lorenzo Fontoura <lorenzo@nioel.com>"]
-description = "dashboard"
-homepage = "https://github.com/rellfy/dashboard"
-repository = "https://github.com/rellfy/dashboard"
-license = "MIT"
-readme = "README.md"
-edition = "2018"
-
-[dependencies]
+[workspace]
+members = [
+    "crates/api",
+    "crates/console",
+]
