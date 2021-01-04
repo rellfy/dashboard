@@ -1,0 +1,13 @@
+[package]
+name = "console"
+version = "0.1.0"
+authors = ["Lorenzo Fontoura <lorenzo@nioel.com>"]
+description = "dashboard console"
+homepage = "https://github.com/rellfy/dashboard"
+repository = "https://github.com/rellfy/dashboard"
+license = "MIT"
+edition = "2018"
+
+[dependencies]
+dashboard = { path = "../api" }
+tokio = "1.0.1"
