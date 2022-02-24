@@ -1,4 +1,4 @@
-use dashboard;
+use api;
 
 const SCOPE_STR: &'static str = "offline_access%20user.read%20mail.readwrite%20calendars.readwrite";
 
@@ -9,6 +9,7 @@ const SCOPE_STR: &'static str = "offline_access%20user.read%20mail.readwrite%20c
 
 fn main() {
     let authorisation_code = get_authorisation_code();
+    println!("code: {}", authorisation_code);
 }
 
 fn get_authorisation_code() -> String {
@@ -32,13 +33,12 @@ fn get_authorisation_code() -> String {
         &client_id,
         SCOPE_STR
     );
-    println!("Visit the following URL and copy the redirect URL: {}", auth_url);
-    println!("Enter redirect URL:");
-    let mut redirect_url = String::new();
-    std::io::stdin().read_line(&mut redirect_url);
+    println!("Visit the following URL to authenticate: {}", auth_url);
+    let mut redirect_request = api::web::get_request();
     // Redirect URL should be in the format {}?code={}
     let code: String = {
-        let mut split = redirect_url.split("?code=");
+        let mut split = redirect_request.split("HTTP/")
+            .next().unwrap().chars().as_str().split("?code=");
         if split.clone().count() != 2 {
             panic!("Invalid redirect URL. \
                 It should be in the format https://localhost:port?code={}");
@@ -48,5 +48,5 @@ fn get_authorisation_code() -> String {
         chars.next_back();
         chars.as_str().to_owned()
     };
-    return code
+    code
 }

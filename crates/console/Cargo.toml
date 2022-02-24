@@ -9,5 +9,5 @@ license = "MIT"
 edition = "2018"
 
 [dependencies]
-dashboard = { path = "../api" }
+api = { path = "../api" }
 tokio = "1.0.1"
