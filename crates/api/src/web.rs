@@ -3,7 +3,7 @@ use std::net::TcpListener;
 use std::net::TcpStream;
 use std::fs;
 
-// Starts web server and returns first request.
+/// Starts a web server and returns first request.
 pub fn get_request() -> String {
     let listener = TcpListener::bind("127.0.0.1:6767").unwrap();
     for stream in listener.incoming() {

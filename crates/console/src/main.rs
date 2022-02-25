@@ -35,7 +35,7 @@ fn get_authorisation_code() -> String {
     );
     println!("Visit the following URL to authenticate: {}", auth_url);
     let mut redirect_request = api::web::get_request();
-    // Redirect URL should be in the format {}?code={}
+    // Redirect request should be in the format GET /?code={} HTTP/
     let code: String = {
         let mut split = redirect_request.split("HTTP/")
             .next().unwrap().chars().as_str().split("?code=");
