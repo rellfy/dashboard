@@ -15,6 +15,7 @@ pub struct Storage {
 pub struct OutlookStorage {
     /// Last update timestamp.
     pub timestamp: u64,
+    pub client_id: String,
     pub authentication_response: api::outlook::auth::AccessTokenResponse
 }
 

@@ -1,5 +1,6 @@
 use std::str::FromStr;
 use serde::{Serialize, Deserialize};
+use crate::outlook::auth::AccessTokenRequestType::{AuthorizationCode, RefreshToken};
 
 const SCOPE_STR: &'static str = "\
     offline_access \
@@ -25,14 +26,20 @@ struct AuthorisationCodeRequest {
 #[derive(Serialize)]
 struct AccessTokenRequest {
     client_id: String,
-    response_type: String,
+    response_type: Option<String>,
     redirect_uri: String,
     scope: String,
-    code: String,
+    code: Option<String>,
+    refresh_token: Option<String>,
     grant_type: String,
 }
 
-#[derive(Serialize, Deserialize)]
+pub enum AccessTokenRequestType {
+    AuthorizationCode(String),
+    RefreshToken(String)
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct AccessTokenResponse {
     pub access_token: String,
     pub token_type: String,
@@ -78,16 +85,45 @@ pub fn get_authorisation_code() -> String {
 
 pub fn get_access_token(
     client_id: &str,
-    authorization_code: &str
+    request_type: AccessTokenRequestType,
 ) -> AccessTokenResponse {
     let api_endpoint = "/common/oauth2/v2.0/token";
     let request = AccessTokenRequest {
         client_id: client_id.to_string(),
-        response_type: "code".to_string(),
+        response_type: {
+            match &request_type {
+                AccessTokenRequestType::AuthorizationCode(_) => { Some("code".to_string()) }
+                _ => None
+            }
+        },
         redirect_uri: "http://localhost:6767".to_string(),
         scope: SCOPE_STR.to_string(),
-        code: authorization_code.to_string(),
-        grant_type: "authorization_code".to_string(),
+        code: {
+            match &request_type {
+                AccessTokenRequestType::AuthorizationCode(code) => { Some(code.clone()) }
+                _ => { None }
+            }
+        },
+        refresh_token: {
+            match &request_type {
+                AccessTokenRequestType::RefreshToken(refresh_token) => {
+                    Some(refresh_token.clone())
+                }
+                _ => {
+                    None
+                }
+            }
+        },
+        grant_type: {
+            match &request_type {
+                AccessTokenRequestType::AuthorizationCode(_) => {
+                    "authorization_code"
+                }
+                AccessTokenRequestType::RefreshToken(_) => {
+                    "refresh_token"
+                }
+            }
+        }.to_string(),
     };
     let access_token_response: AccessTokenResponse = {
         let response = reqwest::blocking::Client::new()
