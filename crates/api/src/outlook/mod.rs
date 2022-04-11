@@ -2,15 +2,19 @@ use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
 use reqwest::StatusCode;
 use serde::{Serialize, Deserialize};
-use crate::mail::{Mailbox, MailboxAuthenticator, Message};
+use crate::mail::{Mailbox, Message};
 use crate::outlook::auth::{AccessTokenRequestType, AccessTokenResponse};
 
 pub mod auth;
 
 const API_HOST: &'static str = "https://graph.microsoft.com";
 
+#[derive(Serialize, Deserialize)]
 pub struct OutlookMailbox {
-    auth: AccessTokenResponse,
+    /// Last update timestamp.
+    pub timestamp: u64,
+    pub client_id: String,
+    pub auth: AccessTokenResponse
 }
 
 #[derive(Deserialize, Clone)]
@@ -39,35 +43,33 @@ struct Recipient {
     email_address: crate::mail::Recipient
 }
 
-impl MailboxAuthenticator<AccessTokenResponse> for OutlookMailbox {
-    fn open(auth: AccessTokenResponse) -> Box<dyn Mailbox> {
-        Box::new(Self {
+impl OutlookMailbox {
+    pub fn open(
+        client_id: &str,
+        auth: AccessTokenResponse
+    ) -> Self {
+        Self {
+            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            client_id: client_id.to_string(),
             auth,
-        })
+        }
     }
 
-}
-
-impl OutlookMailbox {
-    fn try_refresh_access_token(
-        &mut self,
-        client_id: String,
-        last_update: u64
-    ) -> (bool, AccessTokenResponse) {
+    pub fn try_refresh_access_token(&mut self) -> bool {
         let is_expired: bool = {
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-            let elapsed = now - last_update;
+            let elapsed = now - self.timestamp;
             elapsed > self.auth.expires_in as u64
         };
         if !is_expired {
-            return (false, self.auth.clone());
+            return false;
         }
         let access_token = crate::outlook::auth::get_access_token(
-            client_id.as_str(),
+            self.client_id.as_str(),
             AccessTokenRequestType::RefreshToken(self.auth.refresh_token.clone())
         );
-        self.auth = access_token.clone();
-        return (true, access_token);
+        self.auth = access_token;
+        return true;
     }
 }
 

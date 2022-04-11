@@ -3,26 +3,19 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use serde::{Serialize, Deserialize};
+use api::outlook::OutlookMailbox;
 
 const STORAGE_FILE_NAME: &'static str = "dashboard.json";
 
 #[derive(Serialize, Deserialize)]
 pub struct Storage {
-    pub outlook: Option<OutlookStorage>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct OutlookStorage {
-    /// Last update timestamp.
-    pub timestamp: u64,
-    pub client_id: String,
-    pub authentication_response: api::outlook::auth::AccessTokenResponse
+    pub outlook: Vec<OutlookMailbox>,
 }
 
 impl Default for Storage {
     fn default() -> Self {
         Storage {
-            outlook: None
+            outlook: vec![]
         }
     }
 }

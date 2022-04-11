@@ -1,27 +1,40 @@
 use std::alloc::System;
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::storage::{OutlookStorage, Storage};
-use api::mail::{Mailbox, MailboxAuthenticator, Message};
+use crate::storage::{Storage};
+use api::mail::{Mailbox, Message};
 use api::outlook::auth::AccessTokenRequestType;
 use api::outlook::OutlookMailbox;
 
 mod storage;
 
+fn refresh_outlook_access_tokens(storage: &mut Storage) {
+    let mut should_save_storage: bool = false;
+    for outlook in &mut storage.outlook {
+        let refreshed = outlook.try_refresh_access_token();
+        if refreshed && !should_save_storage {
+            should_save_storage = true;
+        }
+    }
+    if should_save_storage {
+        storage::set(&storage);
+    }
+}
+
 fn main() {
     print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
     println!("Welcome to dashboard.");
     let mut storage: Storage = storage::get();
-    if storage.outlook.is_none() {
+    if storage.outlook.is_empty() {
         let (response, client_id) = authenticate_outlook();
-        storage.outlook = Some(OutlookStorage {
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
-            client_id,
-            authentication_response: response
-        });
+        let outlook_mail = OutlookMailbox::open(
+            client_id.as_str(),
+            response.clone()
+        );
+        storage.outlook.push(outlook_mail);
         storage::set(&storage);
     }
-    let outlook: Box<dyn Mailbox> = OutlookMailbox
-        ::open(storage.outlook.unwrap().authentication_response.clone());
+    refresh_outlook_access_tokens(&mut storage);
+    let outlook = storage.outlook.get(0).unwrap();
     let unread = outlook.fetch_unread().unwrap();
     render_messages(&unread);
 }
@@ -30,7 +43,7 @@ fn authenticate_outlook() -> (api::outlook::auth::AccessTokenResponse, String) {
     println!("Authenticating Microsoft Outlook account.");
     let register_app_txt: &str = "Register Azure app @ \
         https://docs.microsoft.com/en-us/graph/auth-register-app-v2 -- then, enter \
-        the Azure app client ID:";
+                the Azure app client ID:";
     println!("{}", register_app_txt);
     let mut client_id = String::new();
     std::io::stdin().read_line(&mut client_id);
