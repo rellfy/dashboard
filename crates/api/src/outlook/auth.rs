@@ -78,7 +78,8 @@ pub fn get_authorisation_code() -> String {
         split.next();
         let mut chars = split.next().unwrap().chars();
         chars.next_back();
-        chars.as_str().to_owned()
+        let front_capped = chars.as_str().to_owned();
+        front_capped.split("&").next().unwrap().to_owned()
     };
     code
 }
