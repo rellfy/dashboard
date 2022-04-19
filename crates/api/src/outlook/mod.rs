@@ -79,7 +79,7 @@ impl Mailbox for OutlookMailbox {
         struct Response {
             value: Vec<OutlookMessage>,
         }
-        let api_endpoint = "/v1.0/me/mailFolders/Inbox/messages?$filter=isRead ne true";
+        let api_endpoint = "/v1.0/me/mailFolders/Inbox/messages?$filter=isRead ne true&$top=1000";
         let response: Response = {
             let response = reqwest::blocking::Client::new()
                 .get(format!("{}{}", API_HOST, api_endpoint))
