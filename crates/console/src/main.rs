@@ -4,8 +4,60 @@ use crate::storage::{Storage};
 use api::mail::{Mailbox, Message};
 use api::outlook::auth::AccessTokenRequestType;
 use api::outlook::OutlookMailbox;
+use std::io::{stdin, stdout, Write};
+use termion::event::Key;
+use termion::input::TermRead;
+use termion::raw::IntoRawMode;
 
 mod storage;
+
+struct State<'a> {
+    pub is_loaded: bool,
+    pub unread_messages: Vec<&'a Message>,
+    pub should_mark_message_as_read: bool,
+    pub should_view_message_body: bool,
+}
+
+fn print_screen(text: &str, stdout: &mut impl Write) {
+    write!(
+        stdout,
+        "{}{}{}",
+        termion::cursor::Goto(1, 1),
+        termion::clear::All,
+        text
+    ).unwrap();
+    stdout.flush().unwrap();
+}
+
+fn render_screen(state: &State, stdout: &mut impl Write) {
+    print_screen("", stdout);
+    if !state.is_loaded {
+        print_screen("Welcome to dashboard.", stdout);
+        return;
+    }
+    if state.should_mark_message_as_read {
+        print_screen("marked as read", stdout);
+        return;
+    }
+    if state.should_view_message_body {
+        print_screen("view msg body", stdout);
+        return;
+    }
+    render_messages(&state.unread_messages, stdout);
+}
+
+fn input_loop(mut state: State, mut stdout: impl Write) {
+    let stdin = stdin();
+    for c in stdin.keys() {
+        match c.unwrap() {
+            Key::Ctrl('c') => break,
+            Key::Left => state.should_mark_message_as_read = !state.should_mark_message_as_read,
+            Key::Right => state.should_view_message_body = !state.should_view_message_body,
+            _ => (),
+        }
+        render_screen(&state, &mut stdout);
+    }
+}
 
 fn refresh_outlook_access_tokens(storage: &mut Storage) {
     let mut should_save_storage: bool = false;
@@ -22,8 +74,25 @@ fn refresh_outlook_access_tokens(storage: &mut Storage) {
 
 fn main() {
     print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
-    println!("Welcome to dashboard.");
+    let mut state: State = State {
+        is_loaded: false,
+        unread_messages: Vec::new(),
+        should_mark_message_as_read: false,
+        should_view_message_body: false,
+    };
+    let mut stdout = stdout().into_raw_mode().unwrap();
+    render_screen(&state, &mut stdout);
     let mut storage: Storage = storage::get();
+    handle_authentication(&mut storage);
+    let outlook = storage.outlook.get(0).unwrap();
+    let unread = outlook.fetch_unread().unwrap();
+    state.unread_messages = unread.iter().map(|m| m).collect();
+    state.is_loaded = true;
+    render_screen(&state, &mut stdout);
+    input_loop(state, stdout);
+}
+
+fn handle_authentication(storage: &mut Storage) {
     if storage.outlook.is_empty() {
         let (response, client_id) = authenticate_outlook();
         let outlook_mail = OutlookMailbox::open(
@@ -33,10 +102,7 @@ fn main() {
         storage.outlook.push(outlook_mail);
         storage::set(&storage);
     }
-    refresh_outlook_access_tokens(&mut storage);
-    let outlook = storage.outlook.get(0).unwrap();
-    let unread = outlook.fetch_unread().unwrap();
-    render_messages(&unread);
+    refresh_outlook_access_tokens(storage);
 }
 
 fn authenticate_outlook() -> (api::outlook::auth::AccessTokenResponse, String) {
@@ -63,13 +129,22 @@ fn authenticate_outlook() -> (api::outlook::auth::AccessTokenResponse, String) {
     (access_token, client_id)
 }
 
-fn render_messages(messages: &Vec<Message>) {
+fn render_messages(messages: &Vec<&Message>, stout: &mut impl Write) {
+    let mut content: String = "".to_string();
     for message in messages.iter() {
         let first_recipient = message.to.first().unwrap().clone();
-        println!("\0");
-        println!("     to: {}", &first_recipient.address);
-        println!("   from: {} <{}>", message.from.name, message.from.address);
-        println!("subject: {}", message.subject);
+        content.push_str("\r\n\r\n");
+        content.push_str("     to: ");
+        content.push_str(&first_recipient.address);
+        content.push_str("\r\n");
+        content.push_str("   from: ");
+        content.push_str(&message.from.name);
+        content.push_str(" <");
+        content.push_str(&message.from.address);
+        content.push_str("\r\n");
+        content.push_str("subject: ");
+        content.push_str(&message.subject);
     }
-    println!("\0");
+    content.push_str("\r\n");
+    print_screen(content.as_str(), stout);
 }
