@@ -14,6 +14,7 @@ mod storage;
 struct State<'a> {
     pub is_loaded: bool,
     pub unread_messages: Vec<&'a Message>,
+    pub selected_message_index: usize,
     pub should_mark_message_as_read: bool,
     pub should_view_message_body: bool,
 }
@@ -43,7 +44,7 @@ fn render_screen(state: &State, stdout: &mut impl Write) {
         print_screen("view msg body", stdout);
         return;
     }
-    render_messages(&state.unread_messages, stdout);
+    render_messages(&state, stdout);
 }
 
 fn input_loop(mut state: State, mut stdout: impl Write) {
@@ -53,6 +54,8 @@ fn input_loop(mut state: State, mut stdout: impl Write) {
             Key::Ctrl('c') => break,
             Key::Left => state.should_mark_message_as_read = !state.should_mark_message_as_read,
             Key::Right => state.should_view_message_body = !state.should_view_message_body,
+            Key::Up => state.selected_message_index -= 1,
+            Key::Down => state.selected_message_index += 1,
             _ => (),
         }
         render_screen(&state, &mut stdout);
@@ -77,6 +80,7 @@ fn main() {
     let mut state: State = State {
         is_loaded: false,
         unread_messages: Vec::new(),
+        selected_message_index: 0,
         should_mark_message_as_read: false,
         should_view_message_body: false,
     };
@@ -88,6 +92,7 @@ fn main() {
     let unread = outlook.fetch_unread().unwrap();
     state.unread_messages = unread.iter().map(|m| m).collect();
     state.is_loaded = true;
+    state.selected_message_index = state.unread_messages.len() - 1;
     render_screen(&state, &mut stdout);
     input_loop(state, stdout);
 }
@@ -129,21 +134,35 @@ fn authenticate_outlook() -> (api::outlook::auth::AccessTokenResponse, String) {
     (access_token, client_id)
 }
 
-fn render_messages(messages: &Vec<&Message>, stout: &mut impl Write) {
+fn render_messages(state: &State, stout: &mut impl Write) {
     let mut content: String = "".to_string();
-    for message in messages.iter() {
+    let mut current_index: usize = 0;
+    let mut terminal_width: usize = termion::terminal_size().unwrap().0 as usize;
+    fn print_char(content: &mut String, c: char, index: usize, terminal_width: usize) {
+        if index < terminal_width {
+            content.push(c);
+        }
+    }
+    for message in state.unread_messages.iter() {
         let first_recipient = message.to.first().unwrap().clone();
-        content.push_str("\r\n\r\n");
-        content.push_str("     to: ");
-        content.push_str(&first_recipient.address);
         content.push_str("\r\n");
-        content.push_str("   from: ");
-        content.push_str(&message.from.name);
-        content.push_str(" <");
-        content.push_str(&message.from.address);
+        if current_index == state.selected_message_index {
+            content.push_str(&format!("{}", termion::color::Bg(termion::color::LightBlack)));
+        }
+        content.push_str("\n");
+        let to_str = format!("     to: {}", &first_recipient.address);
+        content.push_str(to_str.as_str());
+        print_char(&mut content, ' ', terminal_width - to_str.len(), terminal_width);
         content.push_str("\r\n");
-        content.push_str("subject: ");
-        content.push_str(&message.subject);
+        let from_str = format!("   from: {} <{}>", &message.from.name, &message.from.address);
+        content.push_str(from_str.as_str());
+        print_char(&mut content, ' ', terminal_width - from_str.len(), terminal_width);
+        content.push_str("\r\n");
+        let subject_str = format!("subject: {}", &message.subject);
+        content.push_str(subject_str.as_str());
+        print_char(&mut content, ' ', terminal_width - subject_str.len(), terminal_width);
+        content.push_str(&format!("{}", termion::color::Bg(termion::color::Reset)));
+        current_index += 1;
     }
     content.push_str("\r\n");
     print_screen(content.as_str(), stout);
