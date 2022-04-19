@@ -124,12 +124,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         selected_message_index: 0,
         should_view_message_body: false,
     };
+    let mut storage: Storage = storage::get();
+    // add_outlook_mailbox(&mut storage).await;
     let mut stdout = stdout().into_raw_mode().unwrap();
     render_screen(&state, &mut stdout);
-    let mut storage: Storage = storage::get();
-    handle_authentication(&mut storage).await;
-    let outlook = storage.outlook.get(0).unwrap();
-    state.unread_messages = outlook.fetch_unread().await.unwrap();
+    refresh_outlook_access_tokens(&mut storage).await;
+    state.unread_messages = vec![];
+    for outlook_mailbox in &storage.outlook {
+        state.unread_messages.append(
+            &mut outlook_mailbox.fetch_unread().await.unwrap().clone(),
+        );
+    }
     state.is_loaded = true;
     let unread_count = state.unread_messages.len();
     state.selected_message_index = if unread_count == 0 { 0 } else { unread_count - 1 };
@@ -138,41 +143,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn handle_authentication(storage: &mut Storage) {
-    if storage.outlook.is_empty() {
-        let (response, client_id) = authenticate_outlook().await;
-        let outlook_mail = OutlookMailbox::open(
-            client_id.as_str(),
-            response.clone()
-        );
-        storage.outlook.push(outlook_mail);
-        storage::set(&storage);
-    }
-    refresh_outlook_access_tokens(storage).await;
+async fn add_outlook_mailbox(storage: &mut Storage) {
+    let client_id: String = {
+        // TODO: make client_id global per storage instead of per outlook mailbox?
+        // if storage.outlook.len() > 0 {
+        //     storage.outlook[0].client_id.clone()
+        // } else {
+            println!("Authenticating Microsoft Outlook account.");
+            let register_app_txt: &str = "Register Azure app @ \
+            https://docs.microsoft.com/en-us/graph/auth-register-app-v2 -- then, enter \
+                    the Azure app client ID:";
+            println!("{}", register_app_txt);
+            let mut client_id = String::new();
+            std::io::stdin().read_line(&mut client_id);
+            let mut chars = client_id.chars();
+            chars.next_back();
+            chars.as_str().to_owned()
+        // }
+    };
+    let response= authenticate_outlook(&client_id).await;
+    let outlook_mail = OutlookMailbox::open(
+        client_id.as_str(),
+        response.clone()
+    );
+    storage.outlook.push(outlook_mail);
+    storage::set(&storage);
 }
 
-async fn authenticate_outlook() -> (api::outlook::auth::AccessTokenResponse, String) {
-    println!("Authenticating Microsoft Outlook account.");
-    let register_app_txt: &str = "Register Azure app @ \
-        https://docs.microsoft.com/en-us/graph/auth-register-app-v2 -- then, enter \
-                the Azure app client ID:";
-    println!("{}", register_app_txt);
-    let mut client_id = String::new();
-    std::io::stdin().read_line(&mut client_id);
-    client_id = {
-        let mut chars = client_id.chars();
-        chars.next_back();
-        chars.as_str().to_owned()
-    };
+async fn authenticate_outlook(client_id: &str) -> api::outlook::auth::AccessTokenResponse {
     println!("Visit the URL below to authenticate with Outlook");
     let authorisation_url = api::outlook::auth::get_authorisation_code_request_url(&client_id);
     println!("{}", authorisation_url);
     let authorisation_code = api::outlook::auth::get_authorisation_code();
-    let access_token = api::outlook::auth::get_access_token(
+    api::outlook::auth::get_access_token(
         &client_id,
         AccessTokenRequestType::AuthorizationCode(authorisation_code)
-    ).await;
-    (access_token, client_id)
+    ).await
 }
 
 fn render_messages(state: &State, stout: &mut impl Write) {
