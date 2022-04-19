@@ -1,13 +1,17 @@
 use std::error::Error;
 use serde::{Deserialize};
 
+#[async_trait::async_trait]
 pub trait Mailbox {
-    fn fetch_unread(&self) -> Result<Vec<Message>, Box<dyn Error>>;
-    fn set_as_read(&self, message: &Message) -> Result<bool, Box<dyn Error>>;
+    fn get_id(&self) -> &str;
+    async fn fetch_unread(&self) -> Result<Vec<Message>, Box<dyn Error>>;
+    async fn set_as_read(self, message_id: String);
 }
 
+#[derive(Clone)]
 pub struct Message {
     pub id: String,
+    pub mailbox_id: String,
     pub subject: String,
     pub body: String,
     pub from: Recipient,

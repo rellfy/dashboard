@@ -83,7 +83,7 @@ pub fn get_authorisation_code() -> String {
     code
 }
 
-pub fn get_access_token(
+pub async fn get_access_token(
     client_id: &str,
     request_type: AccessTokenRequestType,
 ) -> AccessTokenResponse {
@@ -126,12 +126,14 @@ pub fn get_access_token(
         }.to_string(),
     };
     let access_token_response: AccessTokenResponse = {
-        let response = reqwest::blocking::Client::new()
+        let response = reqwest::Client::new()
             .post(format!("{}{}", API_HOST, api_endpoint))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .form(&request)
-            .send();
-        let str = response.unwrap().text().unwrap();
+            .send()
+            .await
+            .unwrap();
+        let str = response.text().await.unwrap();
         serde_json::from_str(str.as_str()).unwrap()
     };
     access_token_response

@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use serde::{Serialize, Deserialize};
+use api::mail::Mailbox;
 use api::outlook::OutlookMailbox;
 
 const STORAGE_FILE_NAME: &'static str = "dashboard.json";
@@ -17,6 +18,12 @@ impl Default for Storage {
         Storage {
             outlook: vec![]
         }
+    }
+}
+
+impl Storage {
+    pub fn get_mailbox_by_id(&self, id: &str) -> Option<&OutlookMailbox> {
+        self.outlook.iter().find(|mailbox| mailbox.get_id() == id)
     }
 }
 
