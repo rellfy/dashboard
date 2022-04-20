@@ -1,5 +1,6 @@
 use std::alloc::System;
 use std::cmp::{max, min};
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use crate::storage::{Storage};
 use api::mail::{Mailbox, Message};
@@ -9,6 +10,7 @@ use std::io::{stdin, stdout, Write};
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
+use termion::terminal_size;
 use tokio::task::futures;
 
 mod storage;
@@ -16,7 +18,9 @@ mod storage;
 struct State {
     pub is_loaded: bool,
     pub unread_messages: Vec<Message>,
+    pub parsed_message_bodies: HashMap<usize, String>,
     pub selected_message_index: usize,
+    pub cursor_height: usize,
     pub should_view_message_body: bool,
 }
 
@@ -70,7 +74,7 @@ fn render_screen(state: &State, stdout: &mut impl Write) {
         return;
     }
     if state.should_view_message_body {
-        print_screen("view msg body", stdout);
+        render_message_body(state, stdout);
         return;
     }
     render_messages(&state, stdout);
@@ -79,6 +83,7 @@ fn render_screen(state: &State, stdout: &mut impl Write) {
 fn input_loop(mut storage: Storage, mut state: State, mut stdout: impl Write) {
     let stdin = stdin();
     for c in stdin.keys() {
+        let mut skip_render = false;
         match c.unwrap() {
             Key::Ctrl('c') => { print_screen("", &mut stdout); break; },
             Key::Left => {
@@ -91,14 +96,33 @@ fn input_loop(mut storage: Storage, mut state: State, mut stdout: impl Write) {
             },
             Key::Right => if state.unread_messages.len() > 0 {
                 if !state.should_view_message_body {
+                    state.cursor_height = 0;
                     state.should_view_message_body = true;
                 }
             },
-            Key::Up => state.decrease_selected_message_index(),
-            Key::Down => state.increase_selected_message_index(),
+            Key::Up => {
+                if !state.should_view_message_body {
+                    state.decrease_selected_message_index()
+                } else if state.cursor_height > 0 {
+                    state.cursor_height -= 1;
+                } else {
+                    skip_render = true;
+                }
+            },
+            Key::Down => {
+                if !state.should_view_message_body {
+                    state.increase_selected_message_index()
+                } else if state.cursor_height < usize::MAX {
+                    state.cursor_height += 1;
+                } else {
+                    skip_render = true;
+                }
+            },
             _ => (),
         }
-        render_screen(&state, &mut stdout);
+        if !skip_render {
+            render_screen(&state, &mut stdout);
+        }
     }
 }
 
@@ -121,7 +145,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut state: State = State {
         is_loaded: false,
         unread_messages: Vec::new(),
+        parsed_message_bodies: Default::default(),
         selected_message_index: 0,
+        cursor_height: 0,
         should_view_message_body: false,
     };
     let mut storage: Storage = storage::get();
@@ -133,6 +159,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for outlook_mailbox in &storage.outlook {
         state.unread_messages.append(
             &mut outlook_mailbox.fetch_unread().await.unwrap().clone(),
+        );
+    }
+    for i in 0..state.unread_messages.len() {
+        state.parsed_message_bodies.insert(
+            i,
+            parse_message_body(&state.unread_messages[i].body),
         );
     }
     state.is_loaded = true;
@@ -181,8 +213,51 @@ async fn authenticate_outlook(client_id: &str) -> api::outlook::auth::AccessToke
     ).await
 }
 
+fn remove_empty_lines(string: &mut String) {
+    let mut index_option = string.find(" \r\n");
+    while index_option != None {
+        let index = index_option.unwrap();
+        string.replace_range(index..index + 1, "");
+        index_option = string.find(" \r\n");
+    }
+    index_option = string.find("\r\n\r\n");
+    while index_option != None {
+        let index = index_option.unwrap();
+        string.replace_range(index..index + 2, "");
+        index_option = string.find("\r\n\r\n");
+    }
+}
+
+fn parse_message_body(body: &str) -> String {
+    let terminal_size = termion::terminal_size().unwrap();
+    let bytes = body.as_bytes();
+    let mut text = html2text
+    ::from_read(bytes, terminal_size.0 as usize)
+        .replace("\n", "\r\n")
+        .replace("─", "")
+        .replace("┴", "")
+        .replace("┬", "");
+    // .replace("│", ""); // TODO: use this char to parse columns into rows.
+    remove_empty_lines(&mut text);
+    text
+}
+
+fn render_message_body(state: &State, stdout: &mut impl Write) {
+    let mut content: String = String::new();
+    let body = state.parsed_message_bodies.get(&state.selected_message_index).unwrap();
+    let terminal_size = termion::terminal_size().unwrap();
+    let max_rows: usize = terminal_size.1 as usize;
+    let truncated = body.split("\r\n")
+        .skip(state.cursor_height)
+        .take(max_rows).collect::<Vec<&str>>().join("\r\n");
+    content.push_str(
+        &truncated
+    );
+    print_screen(&content, stdout);
+}
+
 fn render_messages(state: &State, stout: &mut impl Write) {
-    let mut content: String = "".to_string();
+    let mut content: String = String::new();
     let mut current_index: usize = 0;
     let mut terminal_width: usize = termion::terminal_size().unwrap().0 as usize;
     fn print_char(content: &mut String, c: char, index: usize, terminal_width: usize) {
@@ -213,5 +288,5 @@ fn render_messages(state: &State, stout: &mut impl Write) {
         current_index += 1;
     }
     content.push_str("\r\n");
-    print_screen(content.as_str(), stout);
+    print_screen(&content, stout);
 }
