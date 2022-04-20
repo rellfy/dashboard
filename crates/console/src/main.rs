@@ -80,7 +80,7 @@ fn input_loop(mut storage: Storage, mut state: State, mut stdout: impl Write) {
     let stdin = stdin();
     for c in stdin.keys() {
         match c.unwrap() {
-            Key::Ctrl('c') => break,
+            Key::Ctrl('c') => { print_screen("", &mut stdout); break; },
             Key::Left => {
                 if !state.should_view_message_body {
                     state.set_selected_message_as_read(&storage);
