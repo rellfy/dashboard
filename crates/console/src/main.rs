@@ -3,7 +3,7 @@ use std::cmp::{max, min};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use crate::storage::{Storage};
-use api::mail::{Mailbox, Message};
+use api::mail::{Mailbox, Message, Recipient};
 use api::outlook::auth::AccessTokenRequestType;
 use api::outlook::OutlookMailbox;
 use std::io::{stdin, stdout, Write};
@@ -67,7 +67,7 @@ fn print_screen(text: &str, stdout: &mut impl Write) {
     stdout.flush().unwrap();
 }
 
-fn render_screen(state: &State, stdout: &mut impl Write) {
+fn render_screen(state: &mut State, stdout: &mut impl Write) {
     print_screen("", stdout);
     if !state.is_loaded {
         print_screen("Welcome to dashboard.", stdout);
@@ -121,7 +121,7 @@ fn input_loop(mut storage: Storage, mut state: State, mut stdout: impl Write) {
             _ => (),
         }
         if !skip_render {
-            render_screen(&state, &mut stdout);
+            render_screen(&mut state, &mut stdout);
         }
     }
 }
@@ -153,7 +153,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut storage: Storage = storage::get();
     // add_outlook_mailbox(&mut storage).await;
     let mut stdout = stdout().into_raw_mode().unwrap();
-    render_screen(&state, &mut stdout);
+    render_screen(&mut state, &mut stdout);
     refresh_outlook_access_tokens(&mut storage).await;
     state.unread_messages = vec![];
     for outlook_mailbox in &storage.outlook {
@@ -161,16 +161,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &mut outlook_mailbox.fetch_unread().await.unwrap().clone(),
         );
     }
-    for i in 0..state.unread_messages.len() {
-        state.parsed_message_bodies.insert(
-            i,
-            parse_message_body(&state.unread_messages[i].body),
-        );
-    }
     state.is_loaded = true;
     let unread_count = state.unread_messages.len();
     state.selected_message_index = if unread_count == 0 { 0 } else { unread_count - 1 };
-    render_screen(&state, &mut stdout);
+    render_screen(&mut state, &mut stdout);
     input_loop(storage, state, stdout);
     Ok(())
 }
@@ -242,9 +236,18 @@ fn parse_message_body(body: &str) -> String {
     text
 }
 
-fn render_message_body(state: &State, stdout: &mut impl Write) {
+fn render_message_body(state: &mut State, stdout: &mut impl Write) {
     let mut content: String = String::new();
-    let body = state.parsed_message_bodies.get(&state.selected_message_index).unwrap();
+    let parsed_cache = state.parsed_message_bodies.get(&state.selected_message_index);
+    let body = if parsed_cache.is_none() {
+        print_screen("parsing message...\r\n", stdout);
+        let parsed = parse_message_body(&state.unread_messages[state.selected_message_index].body);
+        state.parsed_message_bodies
+            .insert(state.selected_message_index, parsed.clone());
+        parsed
+    } else {
+        parsed_cache.unwrap().clone()
+    };
     let terminal_size = termion::terminal_size().unwrap();
     let max_rows: usize = terminal_size.1 as usize;
     let truncated = body.split("\r\n")
@@ -268,7 +271,10 @@ fn render_messages(state: &State, stout: &mut impl Write) {
         }
     }
     for message in state.unread_messages.iter() {
-        let first_recipient = message.to.first().unwrap().clone();
+        let first_recipient = message.to.first().unwrap_or(&Recipient {
+            name: "unknown".to_string(),
+            address: "".to_string(),
+        }).clone();
         content.push_str("\r\n\n");
         if current_index == state.selected_message_index {
             content.push_str(&format!("{}", termion::color::Bg(termion::color::LightBlack)));
