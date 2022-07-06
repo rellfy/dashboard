@@ -18,7 +18,7 @@ mod storage;
 struct State {
     pub is_loaded: bool,
     pub unread_messages: Vec<Message>,
-    pub parsed_message_bodies: HashMap<usize, String>,
+    pub parsed_message_bodies: HashMap<String, String>,
     pub selected_message_index: usize,
     pub cursor_height: usize,
     pub should_view_message_body: bool,
@@ -34,6 +34,7 @@ impl State {
         let selected_message_mailbox_id = self
             .unread_messages[self.selected_message_index].mailbox_id.clone();
         self.unread_messages.remove(self.selected_message_index);
+        self.parsed_message_bodies.remove(&selected_message_id);
         self.decrease_selected_message_index();
         let mut mailbox = storage
             .get_mailbox_by_id(selected_message_mailbox_id.as_str())
@@ -238,12 +239,13 @@ fn parse_message_body(body: &str) -> String {
 
 fn render_message_body(state: &mut State, stdout: &mut impl Write) {
     let mut content: String = String::new();
-    let parsed_cache = state.parsed_message_bodies.get(&state.selected_message_index);
+    let selected_message_id = state.unread_messages[state.selected_message_index].id.clone();
+    let parsed_cache = state.parsed_message_bodies.get(&selected_message_id);
     let body = if parsed_cache.is_none() {
         print_screen("parsing message...\r\n", stdout);
         let parsed = parse_message_body(&state.unread_messages[state.selected_message_index].body);
         state.parsed_message_bodies
-            .insert(state.selected_message_index, parsed.clone());
+            .insert(selected_message_id, parsed.clone());
         parsed
     } else {
         parsed_cache.unwrap().clone()
