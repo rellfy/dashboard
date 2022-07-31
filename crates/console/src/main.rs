@@ -171,9 +171,17 @@ async fn setup(
     render_screen(state, stdout);
     print_screen("initialising authentication...\r\n", stdout);
     refresh_outlook_access_tokens(storage).await;
-    print_screen("fetching unread messages...\r\n", stdout);
+    let mut update_status_message = |i: usize, length: usize| {
+        let message = format!(
+            "fetching unread messages from mailboxes ({}/{})...\r\n",
+            i + 1,
+            length
+        );
+        print_screen(&message, stdout);
+    };
     state.unread_messages = vec![];
-    for outlook_mailbox in &storage.outlook {
+    for (i, outlook_mailbox) in storage.outlook.iter().enumerate() {
+        update_status_message(i, storage.outlook.len());
         state.unread_messages.append(
             &mut outlook_mailbox.fetch_unread().await.unwrap().clone(),
         );
