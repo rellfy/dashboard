@@ -14,6 +14,19 @@ pub struct State {
 }
 
 impl State {
+    pub fn new() -> State {
+        State {
+            is_loaded: false,
+            unread_messages: Vec::new(),
+            parsed_message_bodies: Default::default(),
+            selected_message_index: 0,
+            cursor_height: 0,
+            should_view_message_body: false,
+            should_exit: false,
+            should_skip_render: false
+        }
+    }
+
     pub fn set_selected_message_as_read(&mut self, storage: &Storage) {
         if self.unread_messages.len() == 0 {
             return;
