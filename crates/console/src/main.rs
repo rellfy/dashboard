@@ -151,12 +151,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         should_skip_render: false
     };
     let mut storage: Storage = storage::get();
-    // add_outlook_mailbox(&mut storage).await;
     let mut stdout = stdout().into_raw_mode().unwrap();
-    render_screen(&mut state, &mut stdout);
-    print_screen("initialising authentication...\r\n", &mut stdout);
-    refresh_outlook_access_tokens(&mut storage).await;
-    print_screen("fetching unread messages...\r\n", &mut stdout);
+    setup(&mut state, &mut storage, &mut stdout).await;
+    for key in stdin().keys() {
+       update(&mut state, &mut storage, &mut stdout, key.unwrap());
+        if state.should_exit {
+            break;
+        }
+    }
+    Ok(())
+}
+
+async fn setup(
+    state: &mut State,
+    storage: &mut Storage,
+    stdout: &mut impl Write,
+) {
+    // add_outlook_mailbox(&mut storage).await;
+    render_screen(state, stdout);
+    print_screen("initialising authentication...\r\n", stdout);
+    refresh_outlook_access_tokens(storage).await;
+    print_screen("fetching unread messages...\r\n", stdout);
     state.unread_messages = vec![];
     for outlook_mailbox in &storage.outlook {
         state.unread_messages.append(
@@ -166,13 +181,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     state.is_loaded = true;
     let unread_count = state.unread_messages.len();
     state.selected_message_index = if unread_count == 0 { 0 } else { unread_count - 1 };
-    for key in stdin().keys() {
-       update(&mut state, &mut storage, &mut stdout, key.unwrap());
-        if state.should_exit {
-            break;
-        }
-    }
-    Ok(())
+    render_screen(state, stdout);
 }
 
 fn update(
