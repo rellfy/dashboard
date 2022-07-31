@@ -297,8 +297,21 @@ fn render_message_body(state: &State, stdout: &mut impl Write) {
 
 fn render_messages(state: &State, stout: &mut impl Write) {
     let mut content: String = String::new();
-    let mut current_index: usize = 0;
-    let mut terminal_width: usize = termion::terminal_size().unwrap().0 as usize;
+    let terminal_size = terminal_size().unwrap();
+    let terminal_width = terminal_size.0 as usize;
+    let terminal_height = terminal_size.1 as usize;
+    let message_height = 5;
+    let messages_per_page = terminal_height / message_height;
+    let to_index = max(
+        min(messages_per_page, state.unread_messages.len()),
+        state.selected_message_index
+    );
+    let from_index = if messages_per_page >= to_index {
+        0
+    } else {
+        to_index - messages_per_page
+    };
+    let render_array = &state.unread_messages[from_index..to_index + 1];
     fn print_char(content: &mut String, c: char, index: usize, terminal_width: usize) {
         let mut index = index;
         while index < terminal_width {
@@ -306,13 +319,13 @@ fn render_messages(state: &State, stout: &mut impl Write) {
             index += 1;
         }
     }
-    for message in state.unread_messages.iter() {
+    for (i, message) in render_array.iter().enumerate() {
         let first_recipient = message.to.first().unwrap_or(&Recipient {
             name: "unknown".to_string(),
             address: "".to_string(),
         }).clone();
         content.push_str("\r\n\n");
-        if current_index == state.selected_message_index {
+        if from_index + i == state.selected_message_index {
             content.push_str(&format!("{}", termion::color::Bg(termion::color::LightBlack)));
         }
         let to_str = format!("     to: {}", &first_recipient.address);
@@ -327,7 +340,6 @@ fn render_messages(state: &State, stout: &mut impl Write) {
         content.push_str(subject_str.as_str());
         print_char(&mut content, ' ', subject_str.len(), terminal_width);
         content.push_str(&format!("{}", termion::color::Bg(termion::color::Reset)));
-        current_index += 1;
     }
     content.push_str("\r\n");
     print_screen(&content, stout);
