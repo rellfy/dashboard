@@ -6,10 +6,10 @@ use crate::storage::{Storage};
 use api::mail::{Mailbox, Message, Recipient};
 use api::outlook::auth::AccessTokenRequestType;
 use api::outlook::OutlookMailbox;
-use std::io::{stdin, stdout, Write};
+use std::io::{stdin, stdout, Stdout, Write};
 use termion::event::Key;
 use termion::input::TermRead;
-use termion::raw::IntoRawMode;
+use termion::raw::{IntoRawMode, RawTerminal};
 use termion::terminal_size;
 use tokio::task::futures;
 
@@ -22,6 +22,8 @@ struct State {
     pub selected_message_index: usize,
     pub cursor_height: usize,
     pub should_view_message_body: bool,
+    pub should_exit: bool,
+    pub should_skip_render: bool,
 }
 
 impl State {
@@ -68,7 +70,7 @@ fn print_screen(text: &str, stdout: &mut impl Write) {
     stdout.flush().unwrap();
 }
 
-fn render_screen(state: &mut State, stdout: &mut impl Write) {
+fn render_screen(state: &State, stdout: &mut impl Write) {
     print_screen("", stdout);
     if !state.is_loaded {
         print_screen("Welcome to dashboard.", stdout);
@@ -81,49 +83,44 @@ fn render_screen(state: &mut State, stdout: &mut impl Write) {
     render_messages(&state, stdout);
 }
 
-fn input_loop(mut storage: Storage, mut state: State, mut stdout: impl Write) {
-    let stdin = stdin();
-    for c in stdin.keys() {
-        let mut skip_render = false;
-        match c.unwrap() {
-            Key::Ctrl('c') => { print_screen("", &mut stdout); break; },
-            Key::Left => {
-                if !state.should_view_message_body {
-                    state.set_selected_message_as_read(&storage);
-                } else {
-                    // go back to list of messages
-                    state.should_view_message_body = false;
-                }
-            },
-            Key::Right => if state.unread_messages.len() > 0 {
-                if !state.should_view_message_body {
-                    state.cursor_height = 0;
-                    state.should_view_message_body = true;
-                }
-            },
-            Key::Up => {
-                if !state.should_view_message_body {
-                    state.decrease_selected_message_index()
-                } else if state.cursor_height > 0 {
-                    state.cursor_height -= 1;
-                } else {
-                    skip_render = true;
-                }
-            },
-            Key::Down => {
-                if !state.should_view_message_body {
-                    state.increase_selected_message_index()
-                } else if state.cursor_height < usize::MAX {
-                    state.cursor_height += 1;
-                } else {
-                    skip_render = true;
-                }
-            },
-            _ => (),
-        }
-        if !skip_render {
-            render_screen(&mut state, &mut stdout);
-        }
+fn input_loop(storage: &mut Storage, state: &mut State, key: Key) {
+    state.should_skip_render = false;
+    match key {
+        Key::Ctrl('c') => state.should_exit = true,
+        Key::Left => {
+            if !state.should_view_message_body {
+                state.set_selected_message_as_read(&storage);
+            } else {
+                // go back to list of messages
+                state.should_view_message_body = false;
+            }
+        },
+        Key::Right => if state.unread_messages.len() > 0 {
+            if !state.should_view_message_body {
+                state.cursor_height = 0;
+                state.should_view_message_body = true;
+                try_parse_selected_message(state);
+            }
+        },
+        Key::Up => {
+            if !state.should_view_message_body {
+                state.decrease_selected_message_index()
+            } else if state.cursor_height > 0 {
+                state.cursor_height -= 1;
+            } else {
+                state.should_skip_render = true;
+            }
+        },
+        Key::Down => {
+            if !state.should_view_message_body {
+                state.increase_selected_message_index()
+            } else if state.cursor_height < usize::MAX {
+                state.cursor_height += 1;
+            } else {
+                state.should_skip_render = true;
+            }
+        },
+        _ => (),
     }
 }
 
@@ -150,12 +147,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         selected_message_index: 0,
         cursor_height: 0,
         should_view_message_body: false,
+        should_exit: false,
+        should_skip_render: false
     };
     let mut storage: Storage = storage::get();
     // add_outlook_mailbox(&mut storage).await;
     let mut stdout = stdout().into_raw_mode().unwrap();
     render_screen(&mut state, &mut stdout);
+    print_screen("initialising authentication...\r\n", &mut stdout);
     refresh_outlook_access_tokens(&mut storage).await;
+    print_screen("fetching unread messages...\r\n", &mut stdout);
     state.unread_messages = vec![];
     for outlook_mailbox in &storage.outlook {
         state.unread_messages.append(
@@ -165,9 +166,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     state.is_loaded = true;
     let unread_count = state.unread_messages.len();
     state.selected_message_index = if unread_count == 0 { 0 } else { unread_count - 1 };
-    render_screen(&mut state, &mut stdout);
-    input_loop(storage, state, stdout);
+    for key in stdin().keys() {
+       update(&mut state, &mut storage, &mut stdout, key.unwrap());
+        if state.should_exit {
+            break;
+        }
+    }
     Ok(())
+}
+
+fn update(
+    state: &mut State,
+    storage: &mut Storage,
+    stdout: &mut impl Write,
+    key: Key
+) {
+    input_loop(storage, state, key);
+    render_screen(&state, stdout);
 }
 
 async fn add_outlook_mailbox(storage: &mut Storage) {
@@ -237,19 +252,21 @@ fn parse_message_body(body: &str) -> String {
     text
 }
 
-fn render_message_body(state: &mut State, stdout: &mut impl Write) {
-    let mut content: String = String::new();
+fn try_parse_selected_message(state: &mut State) {
     let selected_message_id = state.unread_messages[state.selected_message_index].id.clone();
     let parsed_cache = state.parsed_message_bodies.get(&selected_message_id);
-    let body = if parsed_cache.is_none() {
-        print_screen("parsing message...\r\n", stdout);
-        let parsed = parse_message_body(&state.unread_messages[state.selected_message_index].body);
-        state.parsed_message_bodies
-            .insert(selected_message_id, parsed.clone());
-        parsed
-    } else {
-        parsed_cache.unwrap().clone()
-    };
+    if parsed_cache.is_some() {
+        return;
+    }
+    let parsed = parse_message_body(&state.unread_messages[state.selected_message_index].body);
+    state.parsed_message_bodies
+        .insert(selected_message_id, parsed.clone());
+}
+
+fn render_message_body(state: &State, stdout: &mut impl Write) {
+    let mut content: String = String::new();
+    let selected_message_id = state.unread_messages[state.selected_message_index].id.clone();
+    let body = state.parsed_message_bodies.get(&selected_message_id).unwrap().clone();
     let terminal_size = termion::terminal_size().unwrap();
     let max_rows: usize = terminal_size.1 as usize;
     let truncated = body.split("\r\n")
