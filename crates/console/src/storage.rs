@@ -1,7 +1,5 @@
 use std::{fs, io};
-use std::fs::File;
-use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use serde::{Serialize, Deserialize};
 use api::mail::Mailbox;
 use api::outlook::OutlookMailbox;
@@ -36,11 +34,13 @@ pub fn set(storage: &Storage) {
         get_storage_path(),
         serde_json::to_string(storage)
             .expect("storage::set: could not serialize storage before saving")
-    );
+    ).expect("storage::set: failed to write to storage");
 }
 
 pub fn get() -> Storage {
-    fn read() -> io::Result<String> { fs::read_to_string(get_storage_path()) };
+    fn read() -> io::Result<String> {
+        fs::read_to_string(get_storage_path())
+    }
     let mut storage_string = read();
     if storage_string.is_err() {
         set(&Storage::default());
