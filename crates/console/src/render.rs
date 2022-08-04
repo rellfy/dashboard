@@ -51,7 +51,7 @@ fn render_messages(state: &State, stout: &mut impl Write) {
     let message_height = 5;
     let messages_per_page = terminal_height / message_height;
     let to_index = max(
-        min(messages_per_page, state.unread_messages.len()),
+        min(messages_per_page, state.unread_messages.len() - 1),
         state.selected_message_index
     );
     let from_index = if messages_per_page >= to_index {
