@@ -84,7 +84,7 @@ fn render_messages(state: &State, stout: &mut impl Write) {
         content.push_str(from_str.as_str());
         print_char(&mut content, ' ', from_str.len(), terminal_width);
         content.push_str("\r\n");
-        let subject_str = format!("subject: {} date: {}", &message.subject, message.date);
+        let subject_str = format!("subject: {}", &message.subject);
         content.push_str(subject_str.as_str());
         print_char(&mut content, ' ', subject_str.len(), terminal_width);
         content.push_str(&format!("{}", termion::color::Bg(termion::color::Reset)));
