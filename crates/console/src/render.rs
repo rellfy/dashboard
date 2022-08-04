@@ -53,8 +53,7 @@ fn render_messages(state: &State, stout: &mut impl Write) {
     let messages_per_page = terminal_height / message_height;
     if state.unread_messages.len() == 0 {
         print_screen("mailbox is empty\r\n", stout);
-        // TODO: should not actually exit here if doing more than just emails
-        exit(0);
+        return;
     }
     let to_index = max(
         min(messages_per_page, state.unread_messages.len() - 1),
