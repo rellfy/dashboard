@@ -7,6 +7,7 @@ use chrono::{NaiveDateTime};
 use reqwest::StatusCode;
 use serde::{Serialize, Deserialize};
 use crate::mail::{Mailbox, Message};
+use crate::mail::SetReadError;
 use crate::outlook::auth::{AccessTokenRequestType, AccessTokenResponse};
 
 pub mod auth;
@@ -119,7 +120,7 @@ impl Mailbox for OutlookMailbox {
         Ok(messages)
     }
 
-    async fn set_as_read(self, message_id: String) {
+    async fn set_as_read(self, message_id: String) -> Result<(), SetReadError> {
         let api_endpoint = format!("/v1.0/me/messages/{}", message_id);
         #[derive(Serialize)]
         #[serde(rename_all = "camelCase")]
@@ -135,13 +136,10 @@ impl Mailbox for OutlookMailbox {
             }).unwrap())
             .send()
             .await
-            .unwrap();
+            .map_err(|_| SetReadError::NoResponse)?;
         if response.status() != StatusCode::OK {
-            panic!(format!(
-                "failed to set message as read ({code}):\r\n{response}",
-                code = response.status(),
-                response = response.text().await.unwrap().as_str()
-            ));
+            return Err(SetReadError::NonOkCode(response.status()));
         }
+        Ok(())
     }
 }
