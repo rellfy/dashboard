@@ -1,5 +1,6 @@
 use std::cmp::{max, min};
 use std::io::Write;
+use std::process::exit;
 use termion::terminal_size;
 use api::mail::Recipient;
 use crate::state::State;
@@ -50,6 +51,11 @@ fn render_messages(state: &State, stout: &mut impl Write) {
     let terminal_height = terminal_size.1 as usize;
     let message_height = 5;
     let messages_per_page = terminal_height / message_height;
+    if state.unread_messages.len() == 0 {
+        print_screen("mailbox is empty\r\n", stout);
+        // TODO: should not actually exit here if doing more than just emails
+        exit(0);
+    }
     let to_index = max(
         min(messages_per_page, state.unread_messages.len() - 1),
         state.selected_message_index
