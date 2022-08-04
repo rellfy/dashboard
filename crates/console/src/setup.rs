@@ -3,6 +3,7 @@ use api::mail::Mailbox;
 use api::outlook::auth::AccessTokenRequestType;
 use api::outlook::OutlookMailbox;
 use crate::{render, State, Storage};
+use crate::parse::sort_messages_by_date;
 use crate::render::print_screen;
 use crate::storage;
 
@@ -30,6 +31,7 @@ pub async fn setup(
             &mut outlook_mailbox.fetch_unread().await.unwrap().clone(),
         );
     }
+    state.unread_messages = sort_messages_by_date(&state.unread_messages);
     state.is_loaded = true;
     let unread_count = state.unread_messages.len();
     state.selected_message_index = if unread_count == 0 { 0 } else { unread_count - 1 };

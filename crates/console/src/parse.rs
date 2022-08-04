@@ -1,4 +1,6 @@
+use std::cmp::Ordering;
 use termion::terminal_size;
+use api::mail::Message;
 use crate::State;
 
 fn remove_empty_lines(string: &mut String) {
@@ -39,4 +41,15 @@ pub fn try_parse_selected_message(state: &mut State) {
     let parsed = parse_message_body(&state.unread_messages[state.selected_message_index].body);
     state.parsed_message_bodies
         .insert(selected_message_id, parsed.clone());
+}
+
+pub fn sort_messages_by_date(messages: &Vec<Message>) -> Vec<Message> {
+    let mut sorted_messages = messages.clone();
+    // Sort by descending order.
+    sorted_messages.sort_by(|a, b| if a.date < b.date {
+        Ordering::Greater
+    } else {
+        Ordering::Less
+    });
+    sorted_messages
 }
