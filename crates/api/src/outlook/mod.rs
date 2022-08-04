@@ -1,7 +1,9 @@
 use std::error::Error;
 use std::future::Future;
 use std::io;
+use std::os::unix::fs::chroot;
 use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::{NaiveDateTime};
 use reqwest::StatusCode;
 use serde::{Serialize, Deserialize};
 use crate::mail::{Mailbox, Message};
@@ -108,6 +110,10 @@ impl Mailbox for OutlookMailbox {
                     .map(|recipient| recipient.email_address.clone()).collect(),
                 subject: outlook_message.subject.clone(),
                 body: outlook_message.body.content.clone(),
+                date: NaiveDateTime
+                    ::parse_from_str(&outlook_message.sent_date_time, "%Y-%m-%dT%H:%M:%S%Z")
+                    .unwrap()
+                    .timestamp() as u64,
             }
         ).collect();
         Ok(messages)

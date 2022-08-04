@@ -15,7 +15,8 @@ pub struct Message {
     pub subject: String,
     pub body: String,
     pub from: Recipient,
-    pub to: Vec<Recipient>
+    pub to: Vec<Recipient>,
+    pub date: u64,
 }
 
 #[derive(Deserialize, Clone)]
